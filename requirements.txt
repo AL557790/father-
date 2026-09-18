@@ -1,8 +1,7 @@
-Flask[async]
-requests
-aiohttp
-googleapis-common-protos
+flask
+python-telegram-bot
 pycryptodome
 protobuf
-Werkzeug
 requests
+aiohttp
+urllib3
