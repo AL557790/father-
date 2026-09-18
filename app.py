@@ -10,19 +10,37 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from google.protobuf.json_format import MessageToJson
 from google.protobuf.message import DecodeError
+from google.protobuf import descriptor as _descriptor
+from google.protobuf import descriptor_pool as _descriptor_pool
+from google.protobuf import symbol_database as _symbol_database
+from google.protobuf.internal import builder as _builder
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# استيراد ملفات Protocol Buffers المترجمة
-import like_pb2
-import like_count_pb2
-import uid_generator_pb2
-
-# تجاهل تحذيرات الشهادات الأمنية
+# تجاهل تحذيرات الشهرسات الأمنية
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ==================== إعدادات بوت التلجرام ====================
-TELEGRAM_BOT_TOKEN = "8991459589:AAFBYciY-_72ktvmQjV8sLrXXf9ojIW9Zgc"  # ضع توكن البوت الخاص بك هنا
+TELEGRAM_BOT_TOKEN = "8719274199:AAFTQ-6PeUE51KUqR4SFiTS3XOCPBlwuxuU"  # ضع توكن البوت هنا
+
+# ==================== دمج كود Protobuf داخلياً (بدون ملفات خارجية) =---
+_sym_db = _symbol_database.Default()
+
+# 1. تعريف uid_generator
+_DESCRIPTOR_UID = _descriptor_pool.Default().AddSerializedFile(b'\n\x13uid_generator.proto"0\n\ruid_generator\x12\x0f\n\x07saturn\x18\x01 \x01(\x03\x12\x0e\n\x06garena\x18\x02 \x01(\x03\x62\x06proto3')
+_globals = globals()
+_builder.BuildMessageAndEnumDescriptors(_DESCRIPTOR_UID, _globals)
+_builder.BuildTopDescriptorsAndMessages(_DESCRIPTOR_UID, 'uid_generator_pb2', _globals)
+
+# 2. تعريف like
+_DESCRIPTOR_LIKE = _descriptor_pool.Default().AddSerializedFile(b'\n\nlike.proto"#\n\x04like\x12\x0b\n\x03uid\x18\x01 \x01(\x03\x12\x0e\n\x06region\x18\x02 \x01(\tb\x06proto3')
+_builder.BuildMessageAndEnumDescriptors(_DESCRIPTOR_LIKE, _globals)
+_builder.BuildTopDescriptorsAndMessages(_DESCRIPTOR_LIKE, 'like_pb2', _globals)
+
+# 3. تعريف like_count
+_DESCRIPTOR_COUNT = _descriptor_pool.Default().AddSerializedFile(b'\n\x10like_count.proto"?\n\tBasicInfo\x12\x0b\n\x03UID\x18\x01 \x01(\x03\x12\x16\n\x0ePlayerNickname\x18\x03 \x01(\t\x12\r\n\x05Likes\x18\x15 \x01(\x03"'\n\x04Info\x12\x1f\n\x0b\x41\x63\x63ountInfo\x18\x01 \x01(\x0b\x32\n.BasicInfob\x06proto3')
+_builder.BuildMessageAndEnumDescriptors(_DESCRIPTOR_COUNT, _globals)
+_builder.BuildTopDescriptorsAndMessages(_DESCRIPTOR_COUNT, 'like_count_pb2', _globals)
 
 # ==================== روابط السيرفرات ====================
 URLS_LIKE = {
@@ -44,20 +62,15 @@ URLS_INFO = {
 # ==================== الدوال الأساسية للعبة ====================
 
 def load_tokens(server):
-    """قراءة التوكنات تلقائياً من مجلد tokens بناءً على اسم السيرفر"""
     filename = f"token_{server.lower()}.json"
     file_path = os.path.join("tokens", filename)
-    
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
-            
-    # ملف احتياطي افتراضي
     default_path = os.path.join("tokens", "token_bd.json")
     if os.path.exists(default_path):
         with open(default_path, "r", encoding="utf-8") as f:
             return json.load(f)
-            
     return []
 
 def get_headers(token):
@@ -78,12 +91,12 @@ def encrypt_message(data):
     return binascii.hexlify(cipher.encrypt(pad(data, AES.block_size))).decode()
 
 def create_like(uid, region):
-    m = like_pb2.like()
+    m = _globals['_LIKE']()  # استخدام الكلاس المدمج
     m.uid, m.region = int(uid), region
     return m.SerializeToString()
 
 def create_uid(uid):
-    m = uid_generator_pb2.uid_generator()
+    m = _globals['_UID_GENERATOR']()  # استخدام الكلاس المدمج
     m.saturn_, m.garena = int(uid), 1
     return m.SerializeToString()
 
@@ -109,7 +122,7 @@ def get_info(enc, server, token):
         verify=False
     )
     try:
-        p = like_count_pb2.Info()
+        p = _globals['_INFO']()  # استخدام الكلاس المدمج
         p.ParseFromString(r.content)
         return p
     except DecodeError:
@@ -141,7 +154,6 @@ async def like_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("⏳ جاري معالجة الطلب وإرسال الإعجابات، يرجى الانتظار...")
 
     try:
-        # تحميل التوكنات من مجلد tokens تلقائياً
         tokens = load_tokens(server)
         if not tokens:
             await msg.edit_text(f"❌ لم يتم العثور على ملفات توكنات للسيرفر `{server}` في مجلد tokens.")
@@ -161,10 +173,8 @@ async def like_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         before_like = int(json.loads(MessageToJson(before)).get('AccountInfo', {}).get('Likes', 0))
-        
         target_url = URLS_LIKE.get(server, "https://clientbp.ggblueshark.com/LikeProfile")
         
-        # إرسال الإعجابات بشكل متزامن
         await multi(uid, server, target_url)
         
         after = json.loads(MessageToJson(get_info(enc_uid, server, tok)))
@@ -188,16 +198,14 @@ async def like_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await msg.edit_text(f"❌ حدث خطأ أثناء تنفيذ الطلب: `{str(e)}`", parse_mode="Markdown")
 
-# ==================== نقطة البداية وتشغيل البوت ====================
+# ==================== تشغيل البوت ====================
 
 def main():
-    # التأكد من وجود مجلد tokens
     if not os.path.exists("tokens"):
         os.makedirs("tokens")
-        print("📁 تم إنشاء مجلد 'tokens' تلقائياً. يوضع بداخله ملفات الـ JSON.")
+        print("📁 تم إنشاء مجلد 'tokens' تلقائياً.")
 
     app_bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    
     app_bot.add_handler(CommandHandler("start", start_command))
     app_bot.add_handler(CommandHandler("like", like_command))
     
